@@ -70,6 +70,8 @@ LocalQueue     = accelerator vendor + accelerator + contract
 ResourceFlavor = model, topology, node pool, or cost variation
 ```
 
+This diagram uses a single flat Cohort for simplicity. [Hierarchical Cohorts](https://kueue.sigs.k8s.io/docs/concepts/cohort/#hierarchical-cohorts) are omitted because the appropriate `CohortTree` depends on each company’s organizational and quota-sharing structure. Parent and child Cohorts can be added as needed to reflect that hierarchy.
+
 ```mermaid
 flowchart TB
   Cohort["Cohort<br/>shared-compute-pool"]

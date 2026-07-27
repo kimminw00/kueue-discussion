@@ -1,26 +1,26 @@
-In multi-tenant accelerator clusters, a single project often needs two different scheduling contracts:
+In multi-tenant accelerator clusters, a single team often needs two different scheduling contracts:
 
-1. **Guaranteed capacity** for workloads that must run within secured project quota.
+1. **Guaranteed capacity** for workloads that must run within secured team quota.
 2. **Opportunistic capacity** for workloads that can use idle cluster resources but can tolerate preemption.
 
-A practical way to model this is to create separate `ClusterQueue`s per project, accelerator family, vendor, and scheduling contract.
+A practical way to model this is to create separate `ClusterQueue`s per team, accelerator family, vendor, and scheduling contract.
 
 Use the following naming pattern for `ClusterQueue`s:
 
 ```text
-<project-name>-<accelerator-vendor>-<accelerator>-guaranteed
-<project-name>-<accelerator-vendor>-<accelerator>-opportunistic
+<team-name>-<accelerator-vendor>-<accelerator>-guaranteed
+<team-name>-<accelerator-vendor>-<accelerator>-opportunistic
 ```
 
 For example:
 
 ```text
-project-a-nvidia-gpu-guaranteed
-project-a-nvidia-gpu-opportunistic
-project-a-amd-gpu-guaranteed
-project-a-amd-gpu-opportunistic
-project-a-google-tpu-guaranteed
-project-a-google-tpu-opportunistic
+team-a-nvidia-gpu-guaranteed
+team-a-nvidia-gpu-opportunistic
+team-a-amd-gpu-guaranteed
+team-a-amd-gpu-opportunistic
+team-a-google-tpu-guaranteed
+team-a-google-tpu-opportunistic
 ```
 
 This design is inspired by the `ClusterQueue` separation model discussed in [Batch Systems in Production with Kueue: Multi-Tenancy and Fungibility](https://www.youtube.com/watch?v=cEnor-oW9_s&t=1359s).
@@ -65,7 +65,7 @@ This avoids mixing different accelerator backends in a single user-facing queue 
 The queue boundary represents the user-facing capacity contract and the runtime compatibility boundary:
 
 ```text
-ClusterQueue   = project + accelerator vendor + accelerator type + contract
+ClusterQueue   = team + accelerator vendor + accelerator type + contract
 LocalQueue     = accelerator vendor + accelerator type + contract
 ResourceFlavor = model, topology, node pool, or cost variation
 ```
@@ -74,15 +74,15 @@ ResourceFlavor = model, topology, node pool, or cost variation
 flowchart TB
   Cohort["Cohort<br/>shared-compute-pool"]
 
-  subgraph ProjectA["Project A"]
+  subgraph TeamA["Team A"]
     direction TB
 
-    A_Nvidia_G_CQ["ClusterQueue<br/>project-a-nvidia-gpu-guaranteed"]
-    A_Nvidia_O_CQ["ClusterQueue<br/>project-a-nvidia-gpu-opportunistic"]
-    A_Tpu_G_CQ["ClusterQueue<br/>project-a-google-tpu-guaranteed"]
-    A_Tpu_O_CQ["ClusterQueue<br/>project-a-google-tpu-opportunistic"]
+    A_Nvidia_G_CQ["ClusterQueue<br/>team-a-nvidia-gpu-guaranteed"]
+    A_Nvidia_O_CQ["ClusterQueue<br/>team-a-nvidia-gpu-opportunistic"]
+    A_Tpu_G_CQ["ClusterQueue<br/>team-a-google-tpu-guaranteed"]
+    A_Tpu_O_CQ["ClusterQueue<br/>team-a-google-tpu-opportunistic"]
 
-    subgraph NamespaceA["Namespace: project-a"]
+    subgraph NamespaceA["Namespace: team-a"]
       direction TB
       A_Nvidia_G_LQ["LocalQueue<br/>nvidia-gpu-guaranteed"]
       A_Nvidia_O_LQ["LocalQueue<br/>nvidia-gpu-opportunistic"]
@@ -91,15 +91,15 @@ flowchart TB
     end
   end
 
-  subgraph ProjectB["Project B"]
+  subgraph TeamB["Team B"]
     direction TB
 
-    B_Nvidia_G_CQ["ClusterQueue<br/>project-b-nvidia-gpu-guaranteed"]
-    B_Nvidia_O_CQ["ClusterQueue<br/>project-b-nvidia-gpu-opportunistic"]
-    B_Tpu_G_CQ["ClusterQueue<br/>project-b-google-tpu-guaranteed"]
-    B_Tpu_O_CQ["ClusterQueue<br/>project-b-google-tpu-opportunistic"]
+    B_Nvidia_G_CQ["ClusterQueue<br/>team-b-nvidia-gpu-guaranteed"]
+    B_Nvidia_O_CQ["ClusterQueue<br/>team-b-nvidia-gpu-opportunistic"]
+    B_Tpu_G_CQ["ClusterQueue<br/>team-b-google-tpu-guaranteed"]
+    B_Tpu_O_CQ["ClusterQueue<br/>team-b-google-tpu-opportunistic"]
 
-    subgraph NamespaceB["Namespace: project-b"]
+    subgraph NamespaceB["Namespace: team-b"]
       direction TB
       B_Nvidia_G_LQ["LocalQueue<br/>nvidia-gpu-guaranteed"]
       B_Nvidia_O_LQ["LocalQueue<br/>nvidia-gpu-opportunistic"]
@@ -129,10 +129,10 @@ flowchart TB
   B_Tpu_O_CQ --- B_Tpu_O_LQ
 ```
 
-For example, `project-a-nvidia-gpu-guaranteed` can contain multiple NVIDIA GPU `ResourceFlavor`s, such as H100, H200, or L40S. Those model-level differences should stay in `ResourceFlavor`s rather than becoming separate `ClusterQueue`s.
+For example, `team-a-nvidia-gpu-guaranteed` can contain multiple NVIDIA GPU `ResourceFlavor`s, such as H100, H200, or L40S. Those model-level differences should stay in `ResourceFlavor`s rather than becoming separate `ClusterQueue`s.
 
 ```text
-project-a-nvidia-gpu-guaranteed
+team-a-nvidia-gpu-guaranteed
   - nvidia-h100-sxm-2x4-ib-ndr-400g-amd64-onprem
   - nvidia-h200-sxm-2x4-ib-ndr-400g-amd64-onprem
   - nvidia-l40s-pcie-amd64-onprem
@@ -141,12 +141,12 @@ project-a-nvidia-gpu-guaranteed
 If a different accelerator family is introduced, such as AMD GPU, Google TPU, or NVIDIA NPU, it should use its own queue family:
 
 ```text
-project-a-amd-gpu-guaranteed
-project-a-amd-gpu-opportunistic
-project-a-google-tpu-guaranteed
-project-a-google-tpu-opportunistic
-project-a-nvidia-npu-guaranteed
-project-a-nvidia-npu-opportunistic
+team-a-amd-gpu-guaranteed
+team-a-amd-gpu-opportunistic
+team-a-google-tpu-guaranteed
+team-a-google-tpu-opportunistic
+team-a-nvidia-npu-guaranteed
+team-a-nvidia-npu-opportunistic
 ```
 
 This keeps scheduling behavior aligned with the actual node pools. CPU, memory, pod capacity, and accelerator quota are assigned from the same flavor, while `ResourceFlavor` still handles model-level differences inside the same accelerator family.
@@ -194,11 +194,11 @@ PVCs, ConfigMaps, Secrets, and Services are different. They may be used by workl
 
 ## Guaranteed ClusterQueue strategy
 
-The **Guaranteed ClusterQueue** represents the project’s secured entitlement.
+The **Guaranteed ClusterQueue** represents the team’s secured entitlement.
 
-It is intended for workloads that should run predictably within the quota assigned to the project. In this strategy, guaranteed queues usually do **not borrow** from other queues by default. This makes the queue easier to reason about: if a workload is admitted through the guaranteed queue, it is running against the project’s own reserved capacity.
+It is intended for workloads that should run predictably within the quota assigned to the team. In this strategy, guaranteed queues usually do **not borrow** from other queues by default. This makes the queue easier to reason about: if a workload is admitted through the guaranteed queue, it is running against the team’s own reserved capacity.
 
-At the same time, unused guaranteed quota can still be shared with other queues through `lendingLimit`. This allows the cluster to stay highly utilized without weakening the project’s entitlement.
+At the same time, unused guaranteed quota can still be shared with other queues through `lendingLimit`. This allows the cluster to stay highly utilized without weakening the team’s entitlement.
 
 ### Example
 
@@ -206,7 +206,7 @@ At the same time, unused guaranteed quota can still be shared with other queues 
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
 metadata:
-  name: project-a-nvidia-gpu-guaranteed
+  name: team-a-nvidia-gpu-guaranteed
 spec:
   cohortName: shared-compute-pool
 
@@ -255,7 +255,7 @@ spec:
 
 This policy expresses the following behavior:
 
-* Guaranteed workloads run within secured project quota.
+* Guaranteed workloads run within secured team quota.
 * `namespaceSelector` uses `example.com/managed-by-kueue: "true"` as a coarse guardrail. [This label marks namespaces that are managed by the Kueue administrator for admission through Kueue](https://kueue.sigs.k8s.io/docs/tasks/manage/enforce_job_management/opt_in_namespace_management/). The goal is not to encode every `ClusterQueue` permission in namespace labels, but to prevent workloads from unmanaged namespaces from being admitted accidentally. Users are not granted permission to create, update, or delete `LocalQueue`s directly. Instead, `LocalQueue`s are created and managed by the platform through Argo CD, so access to a specific `ClusterQueue` is controlled by the platform-managed GitOps workflow.
 * To keep scheduling simple, only idle GPU quota is shared through `lendingLimit`; CPU and memory are kept as supporting quota for the guaranteed queue.
 * `borrowingLimit: "0"` prevents the guaranteed queue from depending on borrowed resources.
@@ -273,16 +273,16 @@ The guaranteed strategy is a good fit for:
 * Production serving workloads.
 * Training jobs that require secured accelerator quota.
 * Time-sensitive workloads with predictable capacity requirements.
-* Project-level quota guarantees.
+* Team-level quota guarantees.
 * Workloads where unexpected preemption would be expensive or operationally risky.
 
 ## Opportunistic ClusterQueue strategy
 
 The **Opportunistic ClusterQueue** represents idle-capacity usage.
 
-It is intended for workloads that should run when the cluster has spare resources, but should not own guaranteed accelerator quota. Opportunistic workloads can improve utilization significantly, especially in heterogeneous accelerator environments where different projects may leave different accelerator types idle at different times.
+It is intended for workloads that should run when the cluster has spare resources, but should not own guaranteed accelerator quota. Opportunistic workloads can improve utilization significantly, especially in heterogeneous accelerator environments where different teams may leave different accelerator types idle at different times.
 
-Unlike the guaranteed queue, the opportunistic queue usually has `nominalQuota: "0"` for scarce accelerator resources. This makes the policy explicit: opportunistic workloads are admitted by using borrowed idle capacity, not by consuming a project entitlement.
+Unlike the guaranteed queue, the opportunistic queue usually has `nominalQuota: "0"` for scarce accelerator resources. This makes the policy explicit: opportunistic workloads are admitted by using borrowed idle capacity, not by consuming a team entitlement.
 
 ### Example
 
@@ -290,7 +290,7 @@ Unlike the guaranteed queue, the opportunistic queue usually has `nominalQuota: 
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
 metadata:
-  name: project-a-nvidia-gpu-opportunistic
+  name: team-a-nvidia-gpu-opportunistic
 spec:
   cohortName: shared-compute-pool
 
@@ -414,10 +414,10 @@ That is expected behavior for opportunistic usage.
 For example:
 
 ```text
-project-a-nvidia-gpu-guaranteed owns 32 GPUs.
-project-b-nvidia-gpu-opportunistic is temporarily borrowing idle GPUs.
-project-a-nvidia-gpu-guaranteed submits a workload that needs its quota back.
-project-b-nvidia-gpu-opportunistic may be preempted so project-a-nvidia-gpu-guaranteed can reclaim its quota.
+team-a-nvidia-gpu-guaranteed owns 32 GPUs.
+team-b-nvidia-gpu-opportunistic is temporarily borrowing idle GPUs.
+team-a-nvidia-gpu-guaranteed submits a workload that needs its quota back.
+team-b-nvidia-gpu-opportunistic may be preempted so team-a-nvidia-gpu-guaranteed can reclaim its quota.
 ```
 
 This is easier to explain because the preemption is tied to quota ownership.
@@ -433,10 +433,10 @@ With Preemption-based Fair Sharing enabled, a workload may be preempted not only
 For example:
 
 ```text
-project-a-nvidia-gpu-opportunistic is running a large training workload using many borrowed GPUs.
-project-b-nvidia-gpu-opportunistic later submits a workload.
-Kueue sees that project-a has a high share.
-Kueue may preempt project-a's workload to rebalance fair share.
+team-a-nvidia-gpu-opportunistic is running a large training workload using many borrowed GPUs.
+team-b-nvidia-gpu-opportunistic later submits a workload.
+Kueue sees that team-a has a high share.
+Kueue may preempt team-a's workload to rebalance fair share.
 ```
 
 This can be correct from a fairness perspective, but it can be disruptive from the user's perspective.
@@ -483,7 +483,7 @@ Admission Fair Sharing is useful when multiple `LocalQueue`s or users share a si
 For example:
 
 ```text
-project-a-nvidia-gpu-opportunistic
+team-a-nvidia-gpu-opportunistic
   <- user-a/nvidia-gpu-opportunistic
   <- user-b/nvidia-gpu-opportunistic
   <- user-c/nvidia-gpu-opportunistic
@@ -688,15 +688,15 @@ Because this design separates queues by heterogeneous accelerator family, create
 <accelerator-vendor>-<accelerator>-opportunistic
 ```
 
-For example, in the `project-a` namespace:
+For example, in the `team-a` namespace:
 
 ```text
-nvidia-gpu-guaranteed      -> project-a-nvidia-gpu-guaranteed
-nvidia-gpu-opportunistic   -> project-a-nvidia-gpu-opportunistic
-amd-gpu-guaranteed         -> project-a-amd-gpu-guaranteed
-amd-gpu-opportunistic      -> project-a-amd-gpu-opportunistic
-google-tpu-guaranteed      -> project-a-google-tpu-guaranteed
-google-tpu-opportunistic   -> project-a-google-tpu-opportunistic
+nvidia-gpu-guaranteed      -> team-a-nvidia-gpu-guaranteed
+nvidia-gpu-opportunistic   -> team-a-nvidia-gpu-opportunistic
+amd-gpu-guaranteed         -> team-a-amd-gpu-guaranteed
+amd-gpu-opportunistic      -> team-a-amd-gpu-opportunistic
+google-tpu-guaranteed      -> team-a-google-tpu-guaranteed
+google-tpu-opportunistic   -> team-a-google-tpu-opportunistic
 ```
 
 Example:
@@ -706,18 +706,18 @@ Example:
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata:
-  namespace: project-a
+  namespace: team-a
   name: nvidia-gpu-guaranteed
 spec:
-  clusterQueue: project-a-nvidia-gpu-guaranteed
+  clusterQueue: team-a-nvidia-gpu-guaranteed
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata:
-  namespace: project-a
+  namespace: team-a
   name: nvidia-gpu-opportunistic
 spec:
-  clusterQueue: project-a-nvidia-gpu-opportunistic
+  clusterQueue: team-a-nvidia-gpu-opportunistic
 ```
 
 This keeps the user-facing contract explicit:
@@ -733,8 +733,8 @@ amd-gpu-opportunistic    = idle AMD GPU capacity, may be preempted
 
 ```text
 ClusterQueue naming:
-- <project-name>-<accelerator-vendor>-<accelerator>-guaranteed
-- <project-name>-<accelerator-vendor>-<accelerator>-opportunistic
+- <team-name>-<accelerator-vendor>-<accelerator>-guaranteed
+- <team-name>-<accelerator-vendor>-<accelerator>-opportunistic
 
 LocalQueue naming:
 - <accelerator-vendor>-<accelerator>-guaranteed
@@ -773,17 +773,17 @@ Admission Fair Sharing:
 - use this for non-preemptive fairness between LocalQueues
 
 LocalQueue:
-- nvidia-gpu-guaranteed -> project-a-nvidia-gpu-guaranteed
-- nvidia-gpu-opportunistic -> project-a-nvidia-gpu-opportunistic
-- amd-gpu-guaranteed -> project-a-amd-gpu-guaranteed
-- amd-gpu-opportunistic -> project-a-amd-gpu-opportunistic
+- nvidia-gpu-guaranteed -> team-a-nvidia-gpu-guaranteed
+- nvidia-gpu-opportunistic -> team-a-nvidia-gpu-opportunistic
+- amd-gpu-guaranteed -> team-a-amd-gpu-guaranteed
+- amd-gpu-opportunistic -> team-a-amd-gpu-opportunistic
 ```
 
 ## Summary
 
 The two-queue model separates quota guarantees from idle-capacity utilization:
 
-* **Guaranteed ClusterQueue** is for secured, predictable project capacity.
+* **Guaranteed ClusterQueue** is for secured, predictable team capacity.
 * **Opportunistic ClusterQueue** is for idle capacity that can be preempted when guaranteed quota is reclaimed.
 * **Accelerator-family queue separation** keeps node-associated resources such as CPU, memory, pods, and accelerator quota aligned with the same ResourceFlavor.
 * **ResourceFlavor** handles model, topology, node pool, and cost differences within the same accelerator family.
@@ -793,7 +793,7 @@ The two-queue model separates quota guarantees from idle-capacity utilization:
 * **Maximum execution time** prevents opportunistic workloads from holding GPUs indefinitely.
 * **Pod quota** provides a practical guardrail against excessive small-Pod submissions and helps keep scheduling behavior aligned with the intended workload policy.
 
-This pattern works well for heterogeneous accelerator clusters because it lets each project keep a clear entitlement while still allowing idle GPUs, TPUs, NPUs, or other accelerator families to be used efficiently.
+This pattern works well for heterogeneous accelerator clusters because it lets each team keep a clear entitlement while still allowing idle GPUs, TPUs, NPUs, or other accelerator families to be used efficiently.
 
 ## Future work
 
@@ -822,7 +822,7 @@ The proposed feature aims to provide a consistent quota-management API for use c
 With such a mechanism, the design could distinguish between:
 
 ```text
-baseline quota  = project entitlement and sharing policy
+baseline quota  = team entitlement and sharing policy
 effective quota = quota available for admission at runtime
 ```
 

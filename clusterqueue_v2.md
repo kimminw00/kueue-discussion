@@ -286,6 +286,8 @@ It is intended for workloads that should run when the cluster has spare resource
 
 Unlike the guaranteed queue, the opportunistic queue usually has `nominalQuota: "0"` for scarce accelerator resources. This makes the policy explicit: opportunistic workloads are admitted by using borrowed idle capacity, not by consuming a team entitlement.
 
+The opportunistic queue can still distinguish between priority levels among workloads that all tolerate interruption.
+
 ### Example
 
 ```yaml
@@ -307,7 +309,7 @@ spec:
 
   preemption:
     reclaimWithinCohort: Never
-    withinClusterQueue: Never
+    withinClusterQueue: LowerPriority
 
   flavorFungibility:
     whenCanBorrow: TryNextFlavor
@@ -351,11 +353,11 @@ This policy makes opportunistic workloads useful, but clearly preemptible:
 * `borrowingLimit` caps how much idle cohort capacity this queue can consume.
 * `reclaimWithinCohort: Never` prevents opportunistic workloads from reclaiming resources from other queues.
 * Guaranteed workloads can reclaim their quota from opportunistic workloads when needed.
-* `withinClusterQueue: Never` avoids preemption between workloads submitted to the same opportunistic queue.
+* [`withinClusterQueue: LowerPriority`](https://kueue.sigs.k8s.io/v0.18/docs/reference/kueue.v1beta2/#kueue-x-k8s-io-v1beta2-ClusterQueuePreemption) allows a pending higher-priority Workload to preempt admitted lower-priority Workloads in the same opportunistic `ClusterQueue` when it cannot fit. The policy only has an effect when workloads use different Kueue priorities, so the platform should define and govern the allowed [`WorkloadPriorityClass`](https://kueue.sigs.k8s.io/v0.18/docs/concepts/workload_priority_class/) values to prevent priority inflation.
 * `UsageBasedAdmissionFairSharing` helps distribute idle capacity fairly when multiple users or namespaces submit to the same opportunistic queue.
 * `pods` quota is still useful even when accelerator quota is opportunistic. It limits the number of admitted Pods and helps prevent the cluster from being filled with many very small Pods that consume scheduling capacity inefficiently.
 
-In short, this queue is optimized for **utilization first**, while preserving the right of guaranteed queues to reclaim their secured quota.
+For users, this means teams can keep idle capacity busy with routine lower-priority jobs without allowing those jobs to indefinitely block higher-priority work. Higher-priority workloads that tolerate interruption can get faster turnaround within the opportunistic queue. This reduces blocking by lower-priority work, but it does not guarantee admission when no borrowable capacity is available. Guaranteed queues still retain the right to reclaim their secured quota.
 
 ### Suitable workloads
 
@@ -366,6 +368,7 @@ The opportunistic strategy is a good fit for:
 * Development and experimentation workloads.
 * Hyperparameter sweeps that can tolerate preemption.
 * Low-priority research workloads.
+* Higher-priority batch workloads that tolerate interruption but benefit from shorter queueing times.
 * Workloads where higher cluster utilization is more important than strict completion-time guarantees.
 
 It is usually not a good fit for production serving, deadline-sensitive jobs, or workloads with very high checkpoint/restart cost.
@@ -408,10 +411,12 @@ With Classic Preemption, preemption happens mainly when:
 This gives users a clearer contract:
 
 ```text
-opportunistic workloads may be preempted when guaranteed quota must be reclaimed.
+opportunistic workloads may be preempted when:
+- a guaranteed queue reclaims its nominal quota
+- a higher-priority workload in the same opportunistic ClusterQueue needs capacity
 ```
 
-That is expected behavior for opportunistic usage.
+Both are expected behaviors for opportunistic usage.
 
 For example:
 
@@ -422,7 +427,15 @@ team-a-nvidia-gpu-guaranteed submits a workload that needs its quota back.
 team-b-nvidia-gpu-opportunistic may be preempted so team-a-nvidia-gpu-guaranteed can reclaim its quota.
 ```
 
-This is easier to explain because the preemption is tied to quota ownership.
+Priority-based preemption can also occur within an opportunistic queue:
+
+```text
+team-a-nvidia-gpu-opportunistic is full of routine lower-priority workloads.
+Team A submits a higher-priority workload that tolerates interruption.
+Kueue may preempt lower-priority workloads in the same ClusterQueue so the new workload can be admitted.
+```
+
+These cases are easier to explain because preemption is tied either to quota ownership or to explicit workload priority.
 
 ### Why not Preemption-based Fair Sharing by default?
 
@@ -495,7 +508,16 @@ In this case, users are competing for idle capacity. Historical usage should inf
 
 This section focuses on how to choose the values in `admissionFairSharing`. These values define how historical usage is measured, how quickly old usage decays, and how strongly each resource contributes to the usage score.
 
-A practical approach is to make the usage score cost-aware. OpenCost's AWS pricing configuration provides default allocation values for CPU, RAM, GPU, and storage. These values can be used as a starting point for `resourceWeights`, so Admission Fair Sharing accounts not only for how much resource was consumed, but also for the estimated cost of that usage.
+A practical approach is to make the usage score cost-aware. [OpenCost's AWS pricing configuration](https://github.com/opencost/opencost/blob/develop/configs/aws.json) provides default allocation values for CPU, RAM, GPU, and storage. These values can be used as a starting point for resourceWeights, so Admission Fair Sharing accounts not only for how much resource was consumed, but also for the estimated cost of that usage
+
+The [current Kueue implementation](https://github.com/kubernetes-sigs/kueue/blob/main/pkg/util/admissionfairsharing/admission_fair_sharing.go) multiplies each configured weight by `resource.Quantity.AsApproximateFloat64()` without resource-specific unit normalization. Because [Kubernetes measures memory quantities in bytes](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#resource-units-in-kubernetes), while OpenCost represents RAM price as [cost per GiB-hour](https://github.com/opencost/opencost/blob/develop/pkg/costmodel/cluster.go), OpenCost's RAM value must be converted to a per-byte weight before it is used as `resourceWeights.memory`. The intended unit semantics are being discussed in [kubernetes-sigs/kueue#10434](https://github.com/kubernetes-sigs/kueue/issues/10434).
+
+```text
+memory_weight_per_byte
+= memory_price_per_gib / bytes_per_gib
+= 0.004237 / 1,073,741,824
+≈ 0.000000000003946014
+```
 
 A simple cost-oriented starting point is:
 
@@ -505,7 +527,7 @@ admissionFairSharing:
   usageSamplingInterval: "5m"
   resourceWeights:
     cpu: 0.031611
-    memory: 0.004237
+    memory: 0.000000000003946014
     nvidia.com/gpu: 0.95
 ```
 
@@ -514,8 +536,8 @@ The rationale for each value is:
 * `usageHalfLifeTime: "168h"` uses a one-week half-life for historical usage. The policy goal is to balance recent usage and forgiveness. Seven days is long enough to discourage repeated opportunistic overuse within the same week, while still allowing older usage to gradually lose influence so users are not penalized indefinitely.
 * `usageSamplingInterval: "5m"` samples usage every five minutes. The policy goal is to capture meaningful accelerator usage frequently enough for fair admission decisions, without making the usage score too noisy for short-lived workload changes.
 * `cpu: 0.031611` uses the CPU allocation value from the same OpenCost AWS configuration.
-* `memory: 0.004237` uses the RAM allocation value from the same OpenCost AWS configuration.
-* `nvidia.com/gpu: 0.95` uses the default GPU allocation value from the OpenCost AWS pricing configuration. This is useful when all GPUs are treated as a single generic GPU resource.
+* `memory: 0.000000000003946014` converts the OpenCost RAM value of `0.004237` per GiB to a per-byte weight, matching the current Kueue calculation. With this conversion, `1Gi` of memory contributes approximately `0.004237` to the usage score.
+* `nvidia.com/gpu: 0.95` uses the default GPU allocation value from the OpenCost  AWS pricing configuration. This is useful when all GPUs are treated as a single generic GPU resource.
 
 Policy meaning:
 
@@ -578,8 +600,8 @@ The basic approximation subtracts the estimated CPU and memory portions from the
 ```text
 estimated_accelerator_cost_per_instance
 = instance_hourly_price
-  - (vcpu_count * cpu_weight)
-  - (memory_gib * memory_weight)
+  - (vcpu_count * cpu_price_per_vcpu_hour)
+  - (memory_gib * memory_price_per_gib_hour)
 
 estimated_accelerator_cost_per_device
 = estimated_accelerator_cost_per_instance / accelerator_count
@@ -588,8 +610,8 @@ estimated_accelerator_cost_per_device
 Using the OpenCost AWS defaults:
 
 ```text
-cpu_weight    = 0.031611
-memory_weight = 0.004237
+cpu_price_per_vcpu_hour   = 0.031611
+memory_price_per_gib_hour = 0.004237
 ```
 
 For instances that include local NVMe instance storage, an optional storage adjustment can also be applied:
@@ -597,9 +619,9 @@ For instances that include local NVMe instance storage, an optional storage adju
 ```text
 estimated_accelerator_cost_per_instance
 = instance_hourly_price
-  - (vcpu_count * cpu_weight)
-  - (memory_gib * memory_weight)
-  - (local_instance_store_gib * storage_weight)
+  - (vcpu_count * cpu_price_per_vcpu_hour)
+  - (memory_gib * memory_price_per_gib_hour)
+  - (local_instance_store_gib * storage_price_per_gib_hour)
 
 estimated_accelerator_cost_per_device
 = estimated_accelerator_cost_per_instance / accelerator_count
@@ -608,7 +630,7 @@ estimated_accelerator_cost_per_device
 Using the OpenCost AWS storage value:
 
 ```text
-storage_weight = 0.00005479452
+storage_price_per_gib_hour = 0.00005479452
 ```
 
 This storage adjustment should be treated as a policy approximation. EC2 instance store is included in the instance usage cost and is not billed as a separate line item. However, subtracting an estimated storage portion can avoid assigning too much of a large accelerator instance's bundled local storage value to the accelerator weight.
@@ -651,7 +673,7 @@ So the model-specific weight can be written as:
 ```yaml
 resourceWeights:
   cpu: 0.031611
-  memory: 0.004237
+  memory: 0.000000000003946014
   accelerator.example.com/nvidia-a10g: 0.80
 ```
 
@@ -667,7 +689,7 @@ admissionFairSharing:
   usageSamplingInterval: "5m"
   resourceWeights:
     cpu: 0.031611
-    memory: 0.004237
+    memory: 0.000000000003946014
     accelerator.example.com/nvidia-k80: 0.52
     accelerator.example.com/nvidia-t4: 0.32
     accelerator.example.com/nvidia-l4: 0.60
@@ -763,7 +785,9 @@ Opportunistic:
 - CPU/memory: positive nominalQuota as supporting resources
 - queueingStrategy: BestEffortFIFO
 - reclaimWithinCohort: Never
-- withinClusterQueue: Never
+- withinClusterQueue: LowerPriority
+- define separate Kueue workload priorities for routine and higher-priority interruption-tolerant workloads
+- restrict access to elevated priorities to prevent priority inflation
 - Admission Fair Sharing: enabled when multiple LocalQueues or users share the queue
 - maximumExecutionTimeSeconds: required
 - pods quota: set to limit concurrency and reduce scheduler fragmentation
@@ -786,7 +810,7 @@ LocalQueue:
 The two-queue model separates quota guarantees from idle-capacity utilization:
 
 * **Guaranteed ClusterQueue** is for secured, predictable team capacity.
-* **Opportunistic ClusterQueue** is for idle capacity that can be preempted when guaranteed quota is reclaimed.
+* **Opportunistic ClusterQueue** is for idle capacity that can be preempted when guaranteed quota is reclaimed or when a higher-priority workload in the same opportunistic queue needs capacity.
 * **Accelerator-family queue separation** keeps node-associated resources such as CPU, memory, pods, and accelerator quota aligned with the same ResourceFlavor.
 * **ResourceFlavor** handles model, topology, node pool, and cost differences within the same accelerator family.
 * **Classic Preemption** provides a clearer and more predictable preemption contract.
@@ -830,8 +854,8 @@ effective quota = quota available for admission at runtime
 
 The guaranteed and opportunistic queue structure could remain unchanged, while effective quota is adjusted dynamically without directly modifying the baseline quota managed through GitOps.
 
-### Admission Fair Sharing resource-weight normalization
+### Admission Fair Sharing memory-unit migration
 
-The memory weight may need to be revised depending on how Kueue interprets resource quantity units.
+[Kueue issue #10434](https://github.com/kubernetes-sigs/kueue/issues/10434) tracks clarification of the intended units for `admissionFairSharing.resourceWeights`. The current Kueue implementation applies the configured weight to the raw memory quantity, so this document uses `0.000000000003946014` per byte.
 
-As noted in #10434, a weight expressed per GiB may need to be normalized if memory usage is calculated at byte scale. The current value should therefore be treated as provisional until the expected unit semantics are clarified and validated.
+If a future Kueue release normalizes memory usage to GiB or explicitly defines memory weights in per-GiB terms, migrate `resourceWeights.memory` from `0.000000000003946014` per byte back to `0.004237` per GiB. Until such a change is documented and released upstream, using `0.004237` directly would over-weight memory by a factor of `2^30`. Review this setting whenever Kueue is upgraded.

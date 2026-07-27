@@ -7,14 +7,14 @@ The goal is to make accelerated compute resources easier to manage across differ
 Use the following naming pattern for accelerator-backed `ResourceFlavor`s:
 
 ```text
-<accelerator-vendor>-<accelerator-name>-<interconnect-topology>-<network-fabric>-<cpu-arch>-<availability>
+<accelerator-vendor>-<accelerator-name>-<accelerator-interconnect-topology>-<network-fabric>-<cpu-arch>-<availability>
 ```
 
 This name is intentionally descriptive. It encodes the major scheduling-relevant properties of the node pool directly into the `ResourceFlavor` name, while the actual scheduling match is still driven by node labels.
 
 The `accelerator-vendor` component is included intentionally. In multi-cluster and hybrid cluster environments, accelerator capacity may come from different vendors, providers, regions, or infrastructure domains. Including the vendor name at the beginning of the `ResourceFlavor` makes it easier to distinguish heterogeneous accelerator pools without inspecting extended resource names, node labels, or provider-specific inventory metadata.
 
-The `interconnect-topology` component describes the effective intra-node accelerator interconnect structure visible to workloads. It intentionally does not expose implementation-specific details such as NVLink mesh, NVSwitch, NVLink bridge, PCIe switch layout, or other physical wiring models.
+The `accelerator-interconnect-topology` component describes the effective intra-node accelerator interconnect structure visible to workloads. It intentionally does not expose implementation-specific details such as NVLink mesh, NVSwitch, NVLink bridge, PCIe switch layout, or other physical wiring models.
 
 The notation follows this format:
 
@@ -69,12 +69,12 @@ The scheduling contract should describe the effective accelerator communication 
 |---|---|
 | `accelerator-vendor` | `nvidia`, `amd`, `google`, `aws`, `intel` |
 | `accelerator-name` | `h100-sxm`, `a100-80gb-pcie`, `h200-nvl` |
-| `interconnect-topology` | `2x4`, `1x4`, `2x2`, `1x8` |
+| `accelerator-interconnect-topology` | `2x4`, `1x4`, `2x2`, `1x8` |
 | `network-fabric` | `ib-ndr-400g`, `ib-hdr-200g`, `eth-400g`, `eth-100g` |
 | `cpu-arch` | `amd64`, `arm64` |
 | `availability` | `onprem`, `reserved`, `ondemand`, `spot` |
 
-Detailed information regarding `interconnect-topology` can be documented separately, but the value should remain implementation-agnostic in the `ResourceFlavor` name and labels.
+Detailed information regarding `accelerator-interconnect-topology` can be documented separately, but the value should remain implementation-agnostic in the `ResourceFlavor` name and labels.
 
 CPU topology is intentionally not part of the default `ResourceFlavor` name. Exact NUMA shape, CPU model, core count, and thread count can split otherwise compatible accelerator pools into many narrower flavors and reduce flavor fungibility. CPU and memory capacity should normally be handled through Kubernetes resource requests, while CPU architecture remains part of the flavor name because it affects binary compatibility.
 
@@ -121,8 +121,8 @@ spec:
     example.com/accelerator-name: h100-sxm
     example.com/accelerator-interconnect-topology: 2x4
     example.com/network-fabric: ib
-    example.com/network-fabric-generation: ndr
-    example.com/network-bandwidth: 400g
+    example.com/network-data-rate: ndr
+    example.com/network-port-bandwidth: 400g
     kubernetes.io/arch: amd64
     example.com/availability: onprem
 ---
@@ -136,8 +136,8 @@ spec:
     example.com/accelerator-name: h100-sxm
     example.com/accelerator-interconnect-topology: 2x4
     example.com/network-fabric: ib
-    example.com/network-fabric-generation: ndr
-    example.com/network-bandwidth: 400g
+    example.com/network-data-rate: ndr
+    example.com/network-port-bandwidth: 400g
     kubernetes.io/arch: amd64
     example.com/availability: reserved
 ---
@@ -151,8 +151,8 @@ spec:
     example.com/accelerator-name: h100-sxm
     example.com/accelerator-interconnect-topology: 2x4
     example.com/network-fabric: ib
-    example.com/network-fabric-generation: ndr
-    example.com/network-bandwidth: 400g
+    example.com/network-data-rate: ndr
+    example.com/network-port-bandwidth: 400g
     kubernetes.io/arch: amd64
     example.com/availability: ondemand
 ---
@@ -166,8 +166,8 @@ spec:
     example.com/accelerator-name: h100-sxm
     example.com/accelerator-interconnect-topology: 2x4
     example.com/network-fabric: ib
-    example.com/network-fabric-generation: ndr
-    example.com/network-bandwidth: 400g
+    example.com/network-data-rate: ndr
+    example.com/network-port-bandwidth: 400g
     kubernetes.io/arch: amd64
     example.com/availability: spot
   nodeTaints:
@@ -190,8 +190,8 @@ kubectl label nodes <node> \
   example.com/accelerator-name=h100-sxm \
   example.com/accelerator-interconnect-topology=2x4 \
   example.com/network-fabric=ib \
-  example.com/network-fabric-generation=ndr \
-  example.com/network-bandwidth=400g \
+  example.com/network-data-rate=ndr \
+  example.com/network-port-bandwidth=400g \
   example.com/availability=onprem
 ```
 
@@ -203,8 +203,8 @@ kubectl label nodes <node> \
   example.com/accelerator-name=h100-sxm \
   example.com/accelerator-interconnect-topology=2x4 \
   example.com/network-fabric=ib \
-  example.com/network-fabric-generation=ndr \
-  example.com/network-bandwidth=400g \
+  example.com/network-data-rate=ndr \
+  example.com/network-port-bandwidth=400g \
   example.com/availability=spot
 
 kubectl taint nodes <node> \
@@ -334,14 +334,14 @@ nodeSelector:
   example.com/accelerator-name: h100-sxm
   example.com/accelerator-interconnect-topology: 2x4
   example.com/network-fabric: ib
-  example.com/network-fabric-generation: ndr
-  example.com/network-bandwidth: 400g
+  example.com/network-data-rate: ndr
+  example.com/network-port-bandwidth: 400g
   kubernetes.io/arch: amd64
 ```
 
 This is useful when performance or compatibility depends on a specific hardware bundle, such as a particular accelerator interconnect structure or network fabric.
 
-### Multiple accelerator types
+### Multiple accelerator names
 
 If a workload can run on either H100 SXM or A100 PCIe, use `.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution`:
 
@@ -358,7 +358,7 @@ affinity:
           - a100-80gb-pcie
 ```
 
-This gives Kueue more placement flexibility than a single exact `nodeSelector`, while still restricting placement to acceptable accelerator types.
+This gives Kueue more placement flexibility than a single exact `nodeSelector`, while still restricting placement to acceptable accelerator names.
 
 ### Multiple interconnect topologies
 

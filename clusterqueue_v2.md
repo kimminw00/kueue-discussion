@@ -65,8 +65,8 @@ This avoids mixing different accelerator backends in a single user-facing queue 
 The queue boundary represents the user-facing capacity contract and the runtime compatibility boundary:
 
 ```text
-ClusterQueue   = team + accelerator vendor + accelerator type + contract
-LocalQueue     = accelerator vendor + accelerator type + contract
+ClusterQueue   = team name + accelerator vendor + accelerator + contract
+LocalQueue     = accelerator vendor + accelerator + contract
 ResourceFlavor = model, topology, node pool, or cost variation
 ```
 

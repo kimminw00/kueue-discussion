@@ -257,14 +257,14 @@ spec:
 
 This policy expresses the following behavior:
 
-* Guaranteed workloads run within secured team quota.
-* `namespaceSelector` uses `example.com/managed-by-kueue: "true"` as a coarse guardrail. [This label marks namespaces that are managed by the Kueue administrator for admission through Kueue](https://kueue.sigs.k8s.io/docs/tasks/manage/enforce_job_management/opt_in_namespace_management/). The goal is not to encode every `ClusterQueue` permission in namespace labels, but to prevent workloads from unmanaged namespaces from being admitted accidentally. Users are not granted permission to create, update, or delete `LocalQueue`s directly. Instead, `LocalQueue`s are created and managed by the platform through Argo CD, so access to a specific `ClusterQueue` is controlled by the platform-managed GitOps workflow.
-* To keep scheduling simple, only idle GPU quota is shared through `lendingLimit`; CPU and memory are kept as supporting quota for the guaranteed queue.
-* `borrowingLimit: "0"` prevents the guaranteed queue from depending on borrowed resources.
-* `lendingLimit` allows idle quota to be shared with other queues in the same cohort.
-* `reclaimWithinCohort: Any` allows guaranteed workloads to reclaim quota that was temporarily borrowed by other queues.
-* `withinClusterQueue: Never` prevents workloads inside the same guaranteed queue from preempting each other.
-* `pods` quota acts as a concurrency and fragmentation guard. It is useful not only for capacity accounting, but also to discourage a pattern where users submit many tiny Pods to occupy scheduler slots or bypass the intended workload shape.
+- Guaranteed workloads run within secured team quota.
+- `namespaceSelector` uses `example.com/managed-by-kueue: "true"` as a coarse guardrail. [This label marks namespaces that are managed by the Kueue administrator for admission through Kueue](https://kueue.sigs.k8s.io/docs/tasks/manage/enforce_job_management/opt_in_namespace_management/). The goal is not to encode every `ClusterQueue` permission in namespace labels, but to prevent workloads from unmanaged namespaces from being admitted accidentally. Users are not granted permission to create, update, or delete `LocalQueue`s directly. Instead, `LocalQueue`s are created and managed by the platform through Argo CD, so access to a specific `ClusterQueue` is controlled by the platform-managed GitOps workflow.
+- To keep scheduling simple, only idle GPU quota is shared through `lendingLimit`; CPU and memory are kept as supporting quota for the guaranteed queue.
+- `borrowingLimit: "0"` prevents the guaranteed queue from depending on borrowed resources.
+- `lendingLimit` allows idle quota to be shared with other queues in the same cohort.
+- `reclaimWithinCohort: Any` allows guaranteed workloads to reclaim quota that was temporarily borrowed by other queues.
+- `withinClusterQueue: Never` prevents workloads inside the same guaranteed queue from preempting each other.
+- `pods` quota acts as a concurrency and fragmentation guard. It is useful not only for capacity accounting, but also to discourage a pattern where users submit many tiny Pods to occupy scheduler slots or bypass the intended workload shape.
 
 In short, this queue is optimized for **predictability first**, while still allowing unused capacity to contribute to overall cluster utilization.
 
@@ -272,11 +272,11 @@ In short, this queue is optimized for **predictability first**, while still allo
 
 The guaranteed strategy is a good fit for:
 
-* Production serving workloads.
-* Training jobs that require secured accelerator quota.
-* Time-sensitive workloads with predictable capacity requirements.
-* Team-level quota guarantees.
-* Workloads where unexpected preemption would be expensive or operationally risky.
+- Production serving workloads.
+- Training jobs that require secured accelerator quota.
+- Time-sensitive workloads with predictable capacity requirements.
+- Team-level quota guarantees.
+- Workloads where unexpected preemption would be expensive or operationally risky.
 
 ## Opportunistic ClusterQueue strategy
 
@@ -346,16 +346,16 @@ spec:
 
 This policy makes opportunistic workloads useful, but clearly preemptible:
 
-* Opportunistic workloads can use idle accelerator capacity.
-* `namespaceSelector` uses `example.com/managed-by-kueue: "true"` as a coarse guardrail. [This label marks namespaces that are managed by the Kueue administrator for admission through Kueue](https://kueue.sigs.k8s.io/docs/tasks/manage/enforce_job_management/opt_in_namespace_management/). The goal is not to encode every `ClusterQueue` permission in namespace labels, but to prevent workloads from unmanaged namespaces from being admitted accidentally. Users are not granted permission to create, update, or delete `LocalQueue`s directly. Instead, `LocalQueue`s are created and managed by the platform through Argo CD, so access to a specific `ClusterQueue` is controlled by the platform-managed GitOps workflow.
-* To keep scheduling simple, CPU and memory have their own positive `nominalQuota`, while only GPU is treated as borrowed opportunistic capacity.
-* `nominalQuota: "0"` makes it clear that this queue does not own guaranteed accelerator quota.
-* `borrowingLimit` caps how much idle cohort capacity this queue can consume.
-* `reclaimWithinCohort: Never` prevents opportunistic workloads from reclaiming resources from other queues.
-* Guaranteed workloads can reclaim their quota from opportunistic workloads when needed.
-* [`withinClusterQueue: LowerPriority`](https://kueue.sigs.k8s.io/v0.18/docs/reference/kueue.v1beta2/#kueue-x-k8s-io-v1beta2-ClusterQueuePreemption) allows a pending higher-priority Workload to preempt admitted lower-priority Workloads in the same opportunistic `ClusterQueue` when it cannot fit. The policy only has an effect when workloads use different Kueue priorities, so the platform should define and govern the allowed [`WorkloadPriorityClass`](https://kueue.sigs.k8s.io/v0.18/docs/concepts/workload_priority_class/) values to prevent priority inflation.
-* `UsageBasedAdmissionFairSharing` helps distribute idle capacity fairly when multiple users or namespaces submit to the same opportunistic queue.
-* `pods` quota is still useful even when accelerator quota is opportunistic. It limits the number of admitted Pods and helps prevent the cluster from being filled with many very small Pods that consume scheduling capacity inefficiently.
+- Opportunistic workloads can use idle accelerator capacity.
+- `namespaceSelector` uses `example.com/managed-by-kueue: "true"` as a coarse guardrail. [This label marks namespaces that are managed by the Kueue administrator for admission through Kueue](https://kueue.sigs.k8s.io/docs/tasks/manage/enforce_job_management/opt_in_namespace_management/). The goal is not to encode every `ClusterQueue` permission in namespace labels, but to prevent workloads from unmanaged namespaces from being admitted accidentally. Users are not granted permission to create, update, or delete `LocalQueue`s directly. Instead, `LocalQueue`s are created and managed by the platform through Argo CD, so access to a specific `ClusterQueue` is controlled by the platform-managed GitOps workflow.
+- To keep scheduling simple, CPU and memory have their own positive `nominalQuota`, while only GPU is treated as borrowed opportunistic capacity.
+- `nominalQuota: "0"` makes it clear that this queue does not own guaranteed accelerator quota.
+- `borrowingLimit` caps how much idle cohort capacity this queue can consume.
+- `reclaimWithinCohort: Never` prevents opportunistic workloads from reclaiming resources from other queues.
+- Guaranteed workloads can reclaim their quota from opportunistic workloads when needed.
+- [`withinClusterQueue: LowerPriority`](https://kueue.sigs.k8s.io/v0.18/docs/reference/kueue.v1beta2/#kueue-x-k8s-io-v1beta2-ClusterQueuePreemption) allows a pending higher-priority Workload to preempt admitted lower-priority Workloads in the same opportunistic `ClusterQueue` when it cannot fit. The policy only has an effect when workloads use different Kueue priorities, so the platform should define and govern the allowed [`WorkloadPriorityClass`](https://kueue.sigs.k8s.io/v0.18/docs/concepts/workload_priority_class/) values to prevent priority inflation.
+- `UsageBasedAdmissionFairSharing` helps distribute idle capacity fairly when multiple users or namespaces submit to the same opportunistic queue.
+- `pods` quota is still useful even when accelerator quota is opportunistic. It limits the number of admitted Pods and helps prevent the cluster from being filled with many very small Pods that consume scheduling capacity inefficiently.
 
 For users, this means teams can keep idle capacity busy with routine lower-priority jobs without allowing those jobs to indefinitely block higher-priority work. Higher-priority workloads that tolerate interruption can get faster turnaround within the opportunistic queue. This reduces blocking by lower-priority work, but it does not guarantee admission when no borrowable capacity is available. Guaranteed queues still retain the right to reclaim their secured quota.
 
@@ -363,13 +363,13 @@ For users, this means teams can keep idle capacity busy with routine lower-prior
 
 The opportunistic strategy is a good fit for:
 
-* Interruptible training jobs.
-* Batch inference jobs.
-* Development and experimentation workloads.
-* Hyperparameter sweeps that can tolerate preemption.
-* Low-priority research workloads.
-* Higher-priority batch workloads that tolerate interruption but benefit from shorter queueing times.
-* Workloads where higher cluster utilization is more important than strict completion-time guarantees.
+- Interruptible training jobs.
+- Batch inference jobs.
+- Development and experimentation workloads.
+- Hyperparameter sweeps that can tolerate preemption.
+- Low-priority research workloads.
+- Higher-priority batch workloads that tolerate interruption but benefit from shorter queueing times.
+- Workloads where higher cluster utilization is more important than strict completion-time guarantees.
 
 It is usually not a good fit for production serving, deadline-sensitive jobs, or workloads with very high checkpoint/restart cost.
 
@@ -510,13 +510,13 @@ This section focuses on how to choose the values in `admissionFairSharing`. Thes
 
 A practical approach is to make the usage score cost-aware. [OpenCost's AWS pricing configuration](https://github.com/opencost/opencost/blob/develop/configs/aws.json) provides default allocation values for CPU, RAM, GPU, and storage. These values can be used as a starting point for resourceWeights, so Admission Fair Sharing accounts not only for how much resource was consumed, but also for the estimated cost of that usage
 
-The [current Kueue implementation](https://github.com/kubernetes-sigs/kueue/blob/main/pkg/util/admissionfairsharing/admission_fair_sharing.go) multiplies each configured weight by `resource.Quantity.AsApproximateFloat64()` without resource-specific unit normalization. Because [Kubernetes measures memory quantities in bytes](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#resource-units-in-kubernetes), while OpenCost represents RAM price as [cost per GiB-hour](https://github.com/opencost/opencost/blob/develop/pkg/costmodel/cluster.go), OpenCost's RAM value must be converted to a per-byte weight before it is used as `resourceWeights.memory`. The intended unit semantics are being discussed in [kubernetes-sigs/kueue#10434](https://github.com/kubernetes-sigs/kueue/issues/10434).
+The [current Kueue implementation](https://github.com/kubernetes-sigs/kueue/blob/main/pkg/util/admissionfairsharing/admission_fair_sharing.go) multiplies each configured weight by `resource.Quantity.AsApproximateFloat64()` without resource-specific unit normalization. Because [Kubernetes measures memory quantities in bytes](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-memory), while OpenCost represents RAM price as [cost per GiB-hour](https://github.com/opencost/opencost/blob/develop/pkg/costmodel/cluster.go), OpenCost's RAM value must be converted to a per-byte weight before it is used as `resourceWeights.memory`. The intended unit semantics are being discussed in [kubernetes-sigs/kueue#10434](https://github.com/kubernetes-sigs/kueue/issues/10434).
 
 ```text
 memory_weight_per_byte
 = memory_price_per_gib / bytes_per_gib
-= 0.004237 / 1,073,741,824
-≈ 0.000000000003946014
+= 0.004237 / 2^30
+≈ 3.946013748645783e-12
 ```
 
 A simple cost-oriented starting point is:
@@ -527,17 +527,19 @@ admissionFairSharing:
   usageSamplingInterval: "5m"
   resourceWeights:
     cpu: 0.031611
-    memory: 0.000000000003946014
+    memory: 3.946013748645783e-12
+    pods: 0.0
     nvidia.com/gpu: 0.95
 ```
 
 The rationale for each value is:
 
-* `usageHalfLifeTime: "168h"` uses a one-week half-life for historical usage. The policy goal is to balance recent usage and forgiveness. Seven days is long enough to discourage repeated opportunistic overuse within the same week, while still allowing older usage to gradually lose influence so users are not penalized indefinitely.
-* `usageSamplingInterval: "5m"` samples usage every five minutes. The policy goal is to capture meaningful accelerator usage frequently enough for fair admission decisions, without making the usage score too noisy for short-lived workload changes.
-* `cpu: 0.031611` uses the CPU allocation value from the same OpenCost AWS configuration.
-* `memory: 0.000000000003946014` converts the OpenCost RAM value of `0.004237` per GiB to a per-byte weight, matching the current Kueue calculation. With this conversion, `1Gi` of memory contributes approximately `0.004237` to the usage score.
-* `nvidia.com/gpu: 0.95` uses the default GPU allocation value from the OpenCost  AWS pricing configuration. This is useful when all GPUs are treated as a single generic GPU resource.
+- `usageHalfLifeTime: "168h"` uses a one-week half-life for historical usage. The policy goal is to balance recent usage and forgiveness. Seven days is long enough to discourage repeated opportunistic overuse within the same week, while still allowing older usage to gradually lose influence so users are not penalized indefinitely.
+- `usageSamplingInterval: "5m"` samples usage every five minutes. The policy goal is to capture meaningful accelerator usage frequently enough for fair admission decisions, without making the usage score too noisy for short-lived workload changes.
+- `cpu: 0.031611` uses the CPU allocation value from the same OpenCost AWS configuration.
+- `memory: 3.946013748645783e-12` converts the OpenCost RAM value of `0.004237` per GiB to a per-byte weight, matching the current Kueue calculation. With this conversion, `1Gi` of memory contributes approximately `0.004237` to the usage score.
+- `pods: 0.0` treats pod count as a quota guardrail rather than a cost dimension. Pod usage therefore does not contribute to the Admission Fair Sharing usage score or workload ordering, while pod quota enforcement and usage accounting remain active.
+- `nvidia.com/gpu: 0.95` uses the default GPU allocation value from the OpenCost AWS pricing configuration. This is useful when all GPUs are treated as a single generic GPU resource.
 
 Policy meaning:
 
@@ -673,7 +675,7 @@ So the model-specific weight can be written as:
 ```yaml
 resourceWeights:
   cpu: 0.031611
-  memory: 0.000000000003946014
+  memory: 3.946013748645783e-12
   accelerator.example.com/nvidia-a10g: 0.80
 ```
 
@@ -689,7 +691,8 @@ admissionFairSharing:
   usageSamplingInterval: "5m"
   resourceWeights:
     cpu: 0.031611
-    memory: 0.000000000003946014
+    memory: 3.946013748645783e-12
+    pods: 0.0
     accelerator.example.com/nvidia-k80: 0.52
     accelerator.example.com/nvidia-t4: 0.32
     accelerator.example.com/nvidia-l4: 0.60
@@ -809,15 +812,15 @@ LocalQueue:
 
 The two-queue model separates quota guarantees from idle-capacity utilization:
 
-* **Guaranteed ClusterQueue** is for secured, predictable team capacity.
-* **Opportunistic ClusterQueue** is for idle capacity that can be preempted when guaranteed quota is reclaimed or when a higher-priority workload in the same opportunistic queue needs capacity.
-* **Accelerator-family queue separation** keeps node-associated resources such as CPU, memory, pods, and accelerator quota aligned with the same ResourceFlavor.
-* **ResourceFlavor** handles model, topology, node pool, and cost differences within the same accelerator family.
-* **Classic Preemption** provides a clearer and more predictable preemption contract.
-* **Borrowing limits** prevent a single opportunistic queue from consuming too much shared capacity.
-* **Admission Fair Sharing** balances opportunistic usage across users or LocalQueues without preempting running workloads.
-* **Maximum execution time** prevents opportunistic workloads from holding GPUs indefinitely.
-* **Pod quota** provides a practical guardrail against excessive small-Pod submissions and helps keep scheduling behavior aligned with the intended workload policy.
+- **Guaranteed ClusterQueue** is for secured, predictable team capacity.
+- **Opportunistic ClusterQueue** is for idle capacity that can be preempted when guaranteed quota is reclaimed or when a higher-priority workload in the same opportunistic queue needs capacity.
+- **Accelerator-family queue separation** keeps node-associated resources such as CPU, memory, pods, and accelerator quota aligned with the same ResourceFlavor.
+- **ResourceFlavor** handles model, topology, node pool, and cost differences within the same accelerator family.
+- **Classic Preemption** provides a clearer and more predictable preemption contract.
+- **Borrowing limits** prevent a single opportunistic queue from consuming too much shared capacity.
+- **Admission Fair Sharing** balances opportunistic usage across users or LocalQueues without preempting running workloads.
+- **Maximum execution time** prevents opportunistic workloads from holding GPUs indefinitely.
+- **Pod quota** provides a practical guardrail against excessive small-Pod submissions and helps keep scheduling behavior aligned with the intended workload policy.
 
 This pattern works well for heterogeneous accelerator clusters because it lets each team keep a clear entitlement while still allowing idle GPUs, TPUs, NPUs, or other accelerator families to be used efficiently.
 
@@ -856,6 +859,6 @@ The guaranteed and opportunistic queue structure could remain unchanged, while e
 
 ### Admission Fair Sharing memory-unit migration
 
-[Kueue issue #10434](https://github.com/kubernetes-sigs/kueue/issues/10434) tracks clarification of the intended units for `admissionFairSharing.resourceWeights`. The current Kueue implementation applies the configured weight to the raw memory quantity, so this document uses `0.000000000003946014` per byte.
+[Kueue issue #10434](https://github.com/kubernetes-sigs/kueue/issues/10434) tracks clarification of the intended units for `admissionFairSharing.resourceWeights`. The current Kueue implementation applies the configured weight to the raw memory quantity, so this document uses `3.946013748645783e-12` per byte.
 
-If a future Kueue release normalizes memory usage to GiB or explicitly defines memory weights in per-GiB terms, migrate `resourceWeights.memory` from `0.000000000003946014` per byte back to `0.004237` per GiB. Until such a change is documented and released upstream, using `0.004237` directly would over-weight memory by a factor of `2^30`. Review this setting whenever Kueue is upgraded.
+If a future Kueue release normalizes memory usage to GiB or explicitly defines memory weights in per-GiB terms, migrate `resourceWeights.memory` from `3.946013748645783e-12` per byte back to `0.004237` per GiB. Until such a change is documented and released upstream, using `0.004237` directly would over-weight memory by a factor of `2^30`. Review this setting whenever Kueue is upgraded.
